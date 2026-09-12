@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { canWrite, type CurrentBusiness } from '../lib/business'
 import { listCustomers } from '../services/customers'
-import { createEstimate, listEstimates, updateEstimateStatus } from '../services/estimates'
+import { convertEstimateToInvoice, createEstimate, listEstimates, updateEstimateStatus } from '../services/estimates'
 
 type Customer = { id: string; first_name: string | null; last_name: string | null; company: string | null }
 type Estimate = { id: string; estimate_number: string | null; status: string; issue_date: string; expires_on: string | null; subtotal: number; tax_amount: number; total: number; customers: Customer[] | null }
@@ -13,6 +13,8 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
   const [estimates, setEstimates] = useState<Estimate[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [showForm, setShowForm] = useState(false)
+  const [convertTarget, setConvertTarget] = useState<Estimate | null>(null)
+  const [convertDueDate, setConvertDueDate] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [customerId, setCustomerId] = useState('')
@@ -70,6 +72,19 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
     await refresh()
   }
 
+  async function convert(event: FormEvent) {
+    event.preventDefault()
+    if (!convertTarget) return
+    setBusy(true); setError('')
+    try {
+      await convertEstimateToInvoice(convertTarget.id, convertDueDate || undefined)
+      setConvertTarget(null); setConvertDueDate('')
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to convert estimate')
+    } finally { setBusy(false) }
+  }
+
   return <div className="page-stack">
     <div className="page-heading split-heading"><div><p className="eyebrow">Estimates</p><h1>Quote the work without the paperwork.</h1></div>{canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New estimate</button>}</div>
     <section className="list-card">
@@ -78,7 +93,10 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
         return <article className="document-row" key={estimate.id}>
           <div className="row-main"><strong>{estimate.estimate_number || 'Draft estimate'}</strong><span>{customerName(customer)} · {new Date(estimate.issue_date).toLocaleDateString()}</span></div>
           <strong className="money">${Number(estimate.total).toFixed(2)}</strong>
-          <select value={estimate.status} disabled={!canWrite(business.role)} onChange={(e) => changeStatus(estimate.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option></select>
+          <div className="document-actions">
+            <select value={estimate.status} disabled={!canWrite(business.role) || estimate.status === 'converted'} onChange={(e) => changeStatus(estimate.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option></select>
+            {canWrite(business.role) && estimate.status === 'accepted' && <button className="conversion-button" onClick={() => { setError(''); setConvertTarget(estimate) }}>Create invoice</button>}
+          </div>
         </article>
       })}
     </section>
@@ -91,6 +109,11 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
         {error && <p className="form-message error-text">{error}</p>}
         <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => { setShowForm(false); resetForm() }}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? 'Saving…' : 'Create estimate'}</button></div>
       </form>
+    </section></div>}
+    {convertTarget && <div className="modal-backdrop" onMouseDown={() => { setConvertTarget(null); setConvertDueDate(''); setError('') }}><section className="modal conversion-modal" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal-head"><div><p className="eyebrow">Accepted estimate</p><h2>Create the invoice</h2></div><button className="icon-button" onClick={() => { setConvertTarget(null); setConvertDueDate(''); setError('') }}>×</button></div>
+      <div className="conversion-summary"><span>{convertTarget.estimate_number || 'Estimate'}</span><strong>${Number(convertTarget.total).toFixed(2)}</strong><p>{customerName(convertTarget.customers?.[0])}</p></div>
+      <form onSubmit={convert} className="conversion-form"><label>Invoice due date<input type="date" value={convertDueDate} onChange={(e) => setConvertDueDate(e.target.value)} /></label><p className="quiet">Owedly will copy every line item and tax rate into a new draft invoice. The database recalculates the final invoice total.</p>{error && <p className="form-message error-text">{error}</p>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={() => { setConvertTarget(null); setConvertDueDate(''); setError('') }}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? 'Creating…' : 'Create invoice'}</button></div></form>
     </section></div>}
   </div>
 }
