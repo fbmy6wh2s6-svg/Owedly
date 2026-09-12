@@ -5,14 +5,21 @@ import { getCurrentBusiness, type CurrentBusiness } from './lib/business'
 import AuthScreen from './components/AuthScreen'
 import BusinessOnboarding from './components/BusinessOnboarding'
 import AppShell from './components/AppShell'
+import CustomerApprovalPage from './pages/CustomerApprovalPage'
 
 export default function App() {
+  const approvalToken = new URLSearchParams(window.location.search).get('approval')
   const [session, setSession] = useState<Session | null>(null)
   const [business, setBusiness] = useState<CurrentBusiness | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (approvalToken) {
+      setLoading(false)
+      return
+    }
+
     let active = true
 
     async function hydrate(nextSession: Session | null) {
@@ -40,8 +47,9 @@ export default function App() {
       active = false
       data.subscription.unsubscribe()
     }
-  }, [])
+  }, [approvalToken])
 
+  if (approvalToken) return <CustomerApprovalPage token={approvalToken} />
   if (loading) return <main className="loading-page"><div className="logo-mark">O</div><p>Opening Owedly…</p></main>
   if (!session) return <AuthScreen />
   if (error) return <main className="loading-page"><div className="logo-mark">O</div><h2>We couldn’t open your workspace.</h2><p>{error}</p><button className="secondary-button" onClick={() => location.reload()}>Try again</button></main>
