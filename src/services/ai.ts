@@ -43,10 +43,11 @@ export async function executeAiAction(actionId: string) {
   return data
 }
 
-export async function transcribeVoice(businessId: string, audio: Blob, prompt?: string) {
+export async function transcribeVoice(businessId: string, audio: Blob, durationSeconds?: number, prompt?: string) {
   const form = new FormData()
   form.append('audio', audio, 'owedly-command.webm')
   form.append('business_id', businessId)
+  if (durationSeconds && Number.isFinite(durationSeconds)) form.append('duration_seconds', durationSeconds.toFixed(2))
   if (prompt) form.append('prompt', prompt)
 
   const { data, error } = await supabase.functions.invoke('transcribe-voice', {
@@ -54,5 +55,5 @@ export async function transcribeVoice(businessId: string, audio: Blob, prompt?: 
   })
 
   if (error) throw error
-  return data as { transcript: string; transcription_id: string | null }
+  return data as { transcript: string; transcription_id: string }
 }
