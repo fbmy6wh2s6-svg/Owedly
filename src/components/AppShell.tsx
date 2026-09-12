@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import DashboardPage from '../pages/DashboardPage'
 import CustomersPage from '../pages/CustomersPage'
 import JobsPage from '../pages/JobsPage'
+import EstimatesPage from '../pages/EstimatesPage'
+import InvoicesPage from '../pages/InvoicesPage'
 import PlaceholderPage from '../pages/PlaceholderPage'
 import VoiceAssistant from './VoiceAssistant'
 
@@ -27,8 +29,8 @@ export default function AppShell({ business }: { business: CurrentBusiness }) {
     if (view === 'dashboard') return <DashboardPage business={business} />
     if (view === 'customers') return <CustomersPage business={business} />
     if (view === 'jobs') return <JobsPage business={business} />
-    if (view === 'estimates') return <PlaceholderPage title="Estimates" description="Build quotes fast and turn accepted work into jobs." />
-    if (view === 'invoices') return <PlaceholderPage title="Invoices" description="Get paid without spending your night doing paperwork." />
+    if (view === 'estimates') return <EstimatesPage business={business} />
+    if (view === 'invoices') return <InvoicesPage business={business} />
     if (view === 'schedule') return <PlaceholderPage title="Schedule" description="See what’s next and keep work moving." />
     return <PlaceholderPage title="Payments" description="Track what came in and what is still owed." />
   }
