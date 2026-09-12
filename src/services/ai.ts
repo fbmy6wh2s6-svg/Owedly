@@ -1,11 +1,13 @@
 import { supabase } from '../lib/supabase'
 
-export async function interpretCommand(businessId: string, transcript: string) {
+export type AiCommandSource = 'text' | 'voice'
+
+export async function interpretCommand(businessId: string, transcript: string, source: AiCommandSource = 'text') {
   const clean = transcript.trim()
   if (!clean) throw new Error('Command is empty')
 
   const { data, error } = await supabase.functions.invoke('ai-command', {
-    body: { business_id: businessId, transcript: clean },
+    body: { business_id: businessId, transcript: clean, source },
   })
 
   if (error) throw error
