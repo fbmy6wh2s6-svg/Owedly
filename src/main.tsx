@@ -4,6 +4,7 @@ import App from './App';
 import './styles.css';
 import './modules.css';
 import './customer-detail.css';
+import './conversion.css';
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Missing root element');
