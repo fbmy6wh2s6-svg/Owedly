@@ -1,10 +1,46 @@
 import { supabase } from '../lib/supabase'
 
+type CustomerRef = Array<{ first_name: string | null; last_name: string | null; company: string | null }> | null
+
 export interface DashboardSnapshot {
   customers: number
   openInvoices: number
   outstandingBalance: number
   jobsThisWeek: number
+  overdueInvoices: Array<{
+    id: string
+    invoice_number: string | null
+    due_date: string | null
+    balance_due: number
+    customers: CustomerRef
+  }>
+  dueReminders: Array<{
+    id: string
+    kind: string
+    due_at: string
+    note: string | null
+    invoice_id: string | null
+    estimate_id: string | null
+    job_id: string | null
+    customer_id: string | null
+  }>
+  todayAppointments: Array<{
+    id: string
+    title: string
+    starts_at: string
+    ends_at: string | null
+    status: string
+    customers: CustomerRef
+  }>
+  pendingApprovals: Array<{
+    id: string
+    document_type: 'estimate' | 'change_order'
+    number: string | null
+    title: string
+    total: number
+    issue_date: string
+    customers: CustomerRef
+  }>
 }
 
 export async function getDashboardSnapshot(businessId: string): Promise<DashboardSnapshot> {
@@ -12,20 +48,66 @@ export async function getDashboardSnapshot(businessId: string): Promise<Dashboar
   const weekEnd = new Date(now)
   weekEnd.setDate(now.getDate() + 7)
 
-  const [customers, invoices, jobs] = await Promise.all([
+  const todayStart = new Date(now)
+  todayStart.setHours(0, 0, 0, 0)
+  const tomorrowStart = new Date(todayStart)
+  tomorrowStart.setDate(todayStart.getDate() + 1)
+  const todayDate = todayStart.toISOString().slice(0, 10)
+
+  const [customers, invoices, jobs, overdueInvoices, dueReminders, todayAppointments, estimatesAwaiting, changeOrdersAwaiting] = await Promise.all([
     supabase.from('customers').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('archived', false),
-    supabase.from('invoices').select('balance_due').eq('business_id', businessId).in('status', ['sent', 'viewed', 'partial', 'overdue']),
+    supabase.from('invoices').select('balance_due').eq('business_id', businessId).gt('balance_due', 0).neq('status', 'void'),
     supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('business_id', businessId).gte('scheduled_start', now.toISOString()).lt('scheduled_start', weekEnd.toISOString()).neq('status', 'canceled'),
+    supabase.from('invoices').select('id,invoice_number,due_date,balance_due,customers(first_name,last_name,company)').eq('business_id', businessId).lt('due_date', todayDate).gt('balance_due', 0).neq('status', 'void').order('due_date', { ascending: true }).limit(10),
+    supabase.from('reminders').select('id,kind,due_at,note,invoice_id,estimate_id,job_id,customer_id').eq('business_id', businessId).eq('status', 'pending').lte('due_at', now.toISOString()).order('due_at', { ascending: true }).limit(10),
+    supabase.from('appointments').select('id,title,starts_at,ends_at,status,customers(first_name,last_name,company)').eq('business_id', businessId).gte('starts_at', todayStart.toISOString()).lt('starts_at', tomorrowStart.toISOString()).neq('status', 'canceled').order('starts_at', { ascending: true }).limit(20),
+    supabase.from('estimates').select('id,estimate_number,total,issue_date,customers(first_name,last_name,company)').eq('business_id', businessId).eq('status', 'sent').order('issue_date', { ascending: true }).limit(10),
+    supabase.from('change_orders').select('id,change_order_number,title,total,issue_date,customers(first_name,last_name,company)').eq('business_id', businessId).eq('status', 'sent').order('issue_date', { ascending: true }).limit(10),
   ])
 
-  if (customers.error) throw customers.error
-  if (invoices.error) throw invoices.error
-  if (jobs.error) throw jobs.error
+  for (const result of [customers, invoices, jobs, overdueInvoices, dueReminders, todayAppointments, estimatesAwaiting, changeOrdersAwaiting]) {
+    if (result.error) throw result.error
+  }
+
+  const pendingApprovals: DashboardSnapshot['pendingApprovals'] = [
+    ...(estimatesAwaiting.data ?? []).map((row: any) => ({
+      id: row.id,
+      document_type: 'estimate' as const,
+      number: row.estimate_number,
+      title: 'Estimate awaiting approval',
+      total: Number(row.total ?? 0),
+      issue_date: row.issue_date,
+      customers: row.customers,
+    })),
+    ...(changeOrdersAwaiting.data ?? []).map((row: any) => ({
+      id: row.id,
+      document_type: 'change_order' as const,
+      number: row.change_order_number,
+      title: row.title || 'Change order awaiting approval',
+      total: Number(row.total ?? 0),
+      issue_date: row.issue_date,
+      customers: row.customers,
+    })),
+  ].sort((a, b) => String(a.issue_date).localeCompare(String(b.issue_date))).slice(0, 12)
 
   return {
     customers: customers.count ?? 0,
-    openInvoices: invoices.data.length,
-    outstandingBalance: invoices.data.reduce((sum, row) => sum + Number(row.balance_due ?? 0), 0),
+    openInvoices: invoices.data?.length ?? 0,
+    outstandingBalance: (invoices.data ?? []).reduce((sum, row) => sum + Number(row.balance_due ?? 0), 0),
     jobsThisWeek: jobs.count ?? 0,
+    overdueInvoices: (overdueInvoices.data ?? []) as DashboardSnapshot['overdueInvoices'],
+    dueReminders: (dueReminders.data ?? []) as DashboardSnapshot['dueReminders'],
+    todayAppointments: (todayAppointments.data ?? []) as DashboardSnapshot['todayAppointments'],
+    pendingApprovals,
   }
+}
+
+export async function completeReminder(reminderId: string) {
+  const { error } = await supabase
+    .from('reminders')
+    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .eq('id', reminderId)
+    .eq('status', 'pending')
+
+  if (error) throw error
 }
