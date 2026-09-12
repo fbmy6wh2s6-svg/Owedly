@@ -12,6 +12,26 @@ export async function interpretCommand(businessId: string, transcript: string) {
   return data
 }
 
+export async function confirmAiAction(actionId: string) {
+  const { error } = await supabase
+    .from('ai_actions')
+    .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+    .eq('id', actionId)
+    .eq('status', 'proposed')
+
+  if (error) throw error
+}
+
+export async function rejectAiAction(actionId: string) {
+  const { error } = await supabase
+    .from('ai_actions')
+    .update({ status: 'rejected' })
+    .eq('id', actionId)
+    .eq('status', 'proposed')
+
+  if (error) throw error
+}
+
 export async function executeAiAction(actionId: string) {
   const { data, error } = await supabase.functions.invoke('execute-ai-action', {
     body: { action_id: actionId },
