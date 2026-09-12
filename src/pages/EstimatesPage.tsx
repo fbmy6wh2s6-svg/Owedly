@@ -3,6 +3,7 @@ import { canWrite, type CurrentBusiness } from '../lib/business'
 import { listCustomers } from '../services/customers'
 import { convertEstimateToInvoice, createEstimate, listEstimates, updateEstimateStatus } from '../services/estimates'
 import { createApprovalLink } from '../services/approvals'
+import { sendDocumentEmail } from '../services/communications'
 import ApprovalLinkDialog from '../components/ApprovalLinkDialog'
 
 type Customer = { id: string; first_name: string | null; last_name: string | null; company: string | null }
@@ -21,6 +22,7 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
   const [approvalLink, setApprovalLink] = useState<ApprovalLinkState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [customerId, setCustomerId] = useState('')
   const [expiresOn, setExpiresOn] = useState('')
   const [notes, setNotes] = useState('')
@@ -48,11 +50,11 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
   }
 
   function resetForm() {
-    setCustomerId(''); setExpiresOn(''); setNotes(''); setLines([blankLine()]); setError('')
+    setCustomerId(''); setExpiresOn(''); setNotes(''); setLines([blankLine()]); setError(''); setNotice('')
   }
 
   async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError('')
+    event.preventDefault(); setBusy(true); setError(''); setNotice('')
     try {
       await createEstimate(business.id, {
         customer_id: customerId,
@@ -72,12 +74,13 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
   }
 
   async function changeStatus(id: string, status: Estimate['status']) {
+    setError(''); setNotice('')
     await updateEstimateStatus(id, status as 'draft' | 'sent' | 'accepted' | 'declined' | 'expired' | 'converted')
     await refresh()
   }
 
   async function shareForApproval(estimate: Estimate) {
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setNotice('')
     try {
       const link = await createApprovalLink(business.id, 'estimate', estimate.id)
       setApprovalLink({ url: link.url, title: `${estimate.estimate_number || 'Estimate'} approval link`, expiresAt: link.expires_at })
@@ -86,10 +89,21 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
     } finally { setBusy(false) }
   }
 
+  async function emailForApproval(estimate: Estimate) {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const sent = await sendDocumentEmail(business.id, 'estimate', estimate.id)
+      setNotice(`Estimate sent to ${sent.recipient}.`)
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to email estimate')
+    } finally { setBusy(false) }
+  }
+
   async function convert(event: FormEvent) {
     event.preventDefault()
     if (!convertTarget) return
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setNotice('')
     try {
       await convertEstimateToInvoice(convertTarget.id, convertDueDate || undefined)
       setConvertTarget(null); setConvertDueDate('')
@@ -101,17 +115,20 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
 
   return <div className="page-stack">
     <div className="page-heading split-heading"><div><p className="eyebrow">Estimates</p><h1>Quote the work without the paperwork.</h1></div>{canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New estimate</button>}</div>
+    {notice && <p className="form-message success-text">{notice}</p>}
     {error && !showForm && !convertTarget && <p className="form-message error-text">{error}</p>}
     <section className="list-card">
       {estimates.length === 0 ? <div className="empty-state"><div className="empty-icon">E</div><h2>No estimates yet</h2><p>Create one here or tell Owedly what you want to quote.</p></div> : estimates.map((estimate) => {
         const customer = estimate.customers?.[0]
+        const terminal = ['accepted', 'declined', 'converted'].includes(estimate.status)
         return <article className="document-row" key={estimate.id}>
           <div className="row-main"><strong>{estimate.estimate_number || 'Draft estimate'}</strong><span>{customerName(customer)} · {new Date(estimate.issue_date).toLocaleDateString()}</span></div>
           <strong className="money">${Number(estimate.total).toFixed(2)}</strong>
           <div className="document-actions">
-            <select value={estimate.status} disabled={!canWrite(business.role) || estimate.status === 'converted'} onChange={(e) => changeStatus(estimate.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option></select>
-            {canWrite(business.role) && !['converted','expired'].includes(estimate.status) && <button className="secondary-button compact" disabled={busy} onClick={() => shareForApproval(estimate)}>Approval link</button>}
-            {canWrite(business.role) && estimate.status === 'accepted' && <button className="conversion-button" onClick={() => { setError(''); setConvertTarget(estimate) }}>Create invoice</button>}
+            {terminal ? <span className={`status-chip ${estimate.status === 'accepted' ? 'paid' : ''}`}>{estimate.status}</span> : <select value={estimate.status} disabled={!canWrite(business.role)} onChange={(e) => changeStatus(estimate.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="expired">Expired</option></select>}
+            {canWrite(business.role) && !['converted','expired','accepted'].includes(estimate.status) && <button className="primary-button compact" disabled={busy} onClick={() => emailForApproval(estimate)}>Email customer</button>}
+            {canWrite(business.role) && !['converted','expired','accepted'].includes(estimate.status) && <button className="secondary-button compact" disabled={busy} onClick={() => shareForApproval(estimate)}>Copy approval link</button>}
+            {canWrite(business.role) && estimate.status === 'accepted' && <button className="conversion-button" onClick={() => { setError(''); setNotice(''); setConvertTarget(estimate) }}>Create invoice</button>}
           </div>
         </article>
       })}
