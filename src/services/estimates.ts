@@ -77,3 +77,13 @@ export async function updateEstimateStatus(estimateId: string, status: 'draft' |
   const { error } = await supabase.from('estimates').update({ status }).eq('id', estimateId)
   if (error) throw error
 }
+
+export async function convertEstimateToInvoice(estimateId: string, dueDate?: string) {
+  const { data, error } = await supabase.rpc('convert_estimate_to_invoice', {
+    target_estimate_id: estimateId,
+    target_due_date: dueDate || null,
+  })
+
+  if (error) throw error
+  return data as string
+}
