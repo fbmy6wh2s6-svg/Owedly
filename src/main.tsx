@@ -9,6 +9,7 @@ import './invoice-detail.css';
 import './mobile-nav.css';
 import './change-orders.css';
 import './customer-approval.css';
+import './office-dashboard.css';
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Missing root element');
