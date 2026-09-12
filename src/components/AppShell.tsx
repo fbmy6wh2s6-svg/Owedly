@@ -22,9 +22,18 @@ const nav: { id: View; label: string; icon: string }[] = [
   { id: 'payments', label: 'Payments', icon: '$' },
 ]
 
+const mobilePrimary: View[] = ['dashboard', 'customers', 'jobs', 'schedule']
+const mobileMore: View[] = ['estimates', 'invoices', 'payments']
+
 export default function AppShell({ business }: { business: CurrentBusiness }) {
   const [view, setView] = useState<View>('dashboard')
   const [refreshVersion, setRefreshVersion] = useState(0)
+  const [showMobileMore, setShowMobileMore] = useState(false)
+
+  function navigate(next: View) {
+    setView(next)
+    setShowMobileMore(false)
+  }
 
   function page() {
     if (view === 'dashboard') return <DashboardPage business={business} />
@@ -40,14 +49,29 @@ export default function AppShell({ business }: { business: CurrentBusiness }) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand"><div className="logo-mark small">O</div><span>Owedly</span></div>
-        <nav>{nav.map((item) => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}><span className="nav-icon">{item.icon}</span>{item.label}</button>)}</nav>
+        <nav>{nav.map((item) => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => navigate(item.id)}><span className="nav-icon">{item.icon}</span>{item.label}</button>)}</nav>
         <div className="sidebar-footer"><div className="business-chip"><strong>{business.name}</strong><span>{business.role}</span></div><button className="text-button left" onClick={() => supabase.auth.signOut()}>Sign out</button></div>
       </aside>
       <main className="workspace">
         <header className="topbar"><div className="mobile-brand"><div className="logo-mark small">O</div><strong>Owedly</strong></div><div className="topbar-business"><span>{business.name}</span><span className="role-pill">{business.role}</span></div></header>
         <div className="workspace-inner" key={`${view}-${refreshVersion}`}>{page()}</div>
       </main>
-      <nav className="mobile-nav">{nav.slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>
+      <nav className="mobile-nav">
+        {mobilePrimary.map((id) => {
+          const item = nav.find((entry) => entry.id === id)!
+          return <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => navigate(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>
+        })}
+        <button className={mobileMore.includes(view) || showMobileMore ? 'active' : ''} onClick={() => setShowMobileMore(true)}><span>•••</span><small>More</small></button>
+      </nav>
+      {showMobileMore && <div className="mobile-more-backdrop" onMouseDown={() => setShowMobileMore(false)}><section className="mobile-more-sheet" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mobile-more-handle" />
+        <div className="mobile-more-head"><div><p className="eyebrow">Owedly</p><h2>More</h2></div><button className="icon-button" onClick={() => setShowMobileMore(false)}>×</button></div>
+        <div className="mobile-more-grid">{mobileMore.map((id) => {
+          const item = nav.find((entry) => entry.id === id)!
+          return <button key={id} className={view === id ? 'active' : ''} onClick={() => navigate(id)}><span className="more-icon">{item.icon}</span><strong>{item.label}</strong></button>
+        })}</div>
+        <div className="mobile-more-account"><div><strong>{business.name}</strong><span>{business.role}</span></div><button className="secondary-button" onClick={() => supabase.auth.signOut()}>Sign out</button></div>
+      </section></div>}
       <VoiceAssistant business={business} onChanged={() => setRefreshVersion((v) => v + 1)} />
     </div>
   )
