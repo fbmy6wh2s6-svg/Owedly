@@ -59,6 +59,7 @@ export default function VoiceAssistant({ business, onChanged }: { business: Curr
   const [error, setError] = useState('')
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const recordingStartedAtRef = useRef<number | null>(null)
 
   function reset() {
     setAction(null); setResult(null); setError(''); setText('')
@@ -97,13 +98,17 @@ export default function VoiceAssistant({ business, onChanged }: { business: Curr
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const recorder = new MediaRecorder(stream)
       chunksRef.current = []
+      recordingStartedAtRef.current = Date.now()
       recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data) }
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop())
         setRecording(false); setBusy(true)
+        const startedAt = recordingStartedAtRef.current
+        recordingStartedAtRef.current = null
+        const durationSeconds = startedAt ? Math.max((Date.now() - startedAt) / 1000, 0.01) : undefined
         try {
           const audio = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-          const transcribed = await transcribeVoice(business.id, audio)
+          const transcribed = await transcribeVoice(business.id, audio, durationSeconds)
           setText(transcribed.transcript)
           await parseCommand(transcribed.transcript, 'voice')
         } catch (err) {
@@ -115,6 +120,7 @@ export default function VoiceAssistant({ business, onChanged }: { business: Curr
       recorder.start()
       setRecording(true)
     } catch (err) {
+      recordingStartedAtRef.current = null
       setError(err instanceof Error ? err.message : 'Microphone access is unavailable')
     }
   }
