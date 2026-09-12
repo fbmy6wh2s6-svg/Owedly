@@ -36,6 +36,21 @@ export async function getCurrentBusiness(): Promise<CurrentBusiness | null> {
   }
 }
 
+export async function createBusiness(name: string): Promise<CurrentBusiness> {
+  const cleanName = name.trim()
+  if (!cleanName) throw new Error('Business name is required')
+
+  const { data, error } = await supabase
+    .from('businesses')
+    .insert({ name: cleanName })
+    .select('id, name')
+    .single()
+
+  if (error) throw error
+
+  return { id: data.id, name: data.name, role: 'owner' }
+}
+
 export function canWrite(role: BusinessRole) {
   return role !== 'viewer'
 }
