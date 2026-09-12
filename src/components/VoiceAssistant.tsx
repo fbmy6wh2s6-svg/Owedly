@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { CurrentBusiness } from '../lib/business'
-import { confirmAiAction, executeAiAction, interpretCommand, rejectAiAction, transcribeVoice } from '../services/ai'
+import { confirmAiAction, executeAiAction, interpretCommand, rejectAiAction, transcribeVoice, type AiCommandSource } from '../services/ai'
 
 type ParsedAction = {
   action_id: string
@@ -18,12 +18,19 @@ function friendlyIntent(intent: string) {
 function describe(action: ParsedAction) {
   const f = action.fields ?? {}
   const customer = f.customer_name || f.company_name
-  const parts = [customer, f.job_title, f.job_description].filter(Boolean)
+  const parts = [customer, f.job_title, f.change_order_title, f.job_description].filter(Boolean)
+  if (f.invoice_number) parts.push(`Invoice ${f.invoice_number}`)
   if (Array.isArray(f.line_items) && f.line_items.length) {
-    parts.push(f.line_items.map((x: any) => `${x.description} — ${x.quantity} × $${Number(x.unit_price).toFixed(2)}`).join(', '))
+    parts.push(f.line_items.map((x: any) => {
+      const tax = Number(x.tax_rate ?? 0)
+      return `${x.description} — ${x.quantity} × $${Number(x.unit_price).toFixed(2)}${tax ? ` + ${tax}% tax` : ''}`
+    }).join(', '))
   }
-  if (f.payment_amount) parts.push(`$${Number(f.payment_amount).toFixed(2)}`)
-  if (f.scheduled_at_text) parts.push(String(f.scheduled_at_text))
+  if (f.payment_amount) parts.push(`Payment $${Number(f.payment_amount).toFixed(2)}`)
+  if (f.payment_method) parts.push(String(f.payment_method).toUpperCase())
+  if (f.scheduled_at_text) parts.push(`Starts ${String(f.scheduled_at_text)}`)
+  if (f.scheduled_end_text) parts.push(`Ends ${String(f.scheduled_end_text)}`)
+  if (Number.isInteger(f.schedule_impact_days) && f.schedule_impact_days !== 0) parts.push(`${f.schedule_impact_days > 0 ? '+' : ''}${f.schedule_impact_days} day schedule impact`)
   return parts.join(' · ') || 'Owedly is ready to perform this action.'
 }
 
@@ -32,6 +39,7 @@ function ResultView({ result }: { result: any }) {
   const payload = result.result ?? result
   if (payload.total_outstanding !== undefined) return <p className="assistant-result">{payload.count} unpaid invoice{payload.count === 1 ? '' : 's'} · ${Number(payload.total_outstanding).toFixed(2)} outstanding</p>
   if (payload.outstanding !== undefined) return <p className="assistant-result">{payload.customers} customers · {payload.active_jobs} active jobs · ${Number(payload.outstanding).toFixed(2)} outstanding</p>
+  if (payload.change_order) return <p className="assistant-result">Change order {payload.change_order.change_order_number ?? ''} created for ${Number(payload.change_order.total ?? 0).toFixed(2)}. Customer approval is still required.</p>
   if (payload.invoice) return <p className="assistant-result">Invoice {payload.invoice.invoice_number ?? ''} is ready. Balance: ${Number(payload.invoice.balance_due ?? payload.invoice.total ?? 0).toFixed(2)}</p>
   if (payload.estimate) return <p className="assistant-result">Estimate {payload.estimate.estimate_number ?? ''} created for ${Number(payload.estimate.total ?? 0).toFixed(2)}</p>
   if (payload.job) return <p className="assistant-result">Job “{payload.job.title}” created.</p>
@@ -56,10 +64,10 @@ export default function VoiceAssistant({ business, onChanged }: { business: Curr
     setAction(null); setResult(null); setError(''); setText('')
   }
 
-  async function parseCommand(command: string) {
+  async function parseCommand(command: string, source: AiCommandSource) {
     setBusy(true); setError(''); setResult(null)
     try {
-      const parsed = await interpretCommand(business.id, command) as ParsedAction
+      const parsed = await interpretCommand(business.id, command, source) as ParsedAction
       setAction(parsed)
       setText(command)
       if (parsed.clarification_question) return
@@ -76,7 +84,7 @@ export default function VoiceAssistant({ business, onChanged }: { business: Curr
   }
 
   async function submitText() {
-    if (text.trim()) await parseCommand(text.trim())
+    if (text.trim()) await parseCommand(text.trim(), 'text')
   }
 
   async function toggleRecording() {
@@ -97,7 +105,7 @@ export default function VoiceAssistant({ business, onChanged }: { business: Curr
           const audio = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
           const transcribed = await transcribeVoice(business.id, audio)
           setText(transcribed.transcript)
-          await parseCommand(transcribed.transcript)
+          await parseCommand(transcribed.transcript, 'voice')
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Voice transcription failed')
           setBusy(false)
@@ -132,14 +140,14 @@ export default function VoiceAssistant({ business, onChanged }: { business: Curr
   return <>
     <button className="voice-fab" onClick={() => { setOpen(true); reset() }} aria-label="Talk to Owedly"><span className="mic-dot">●</span><span>Talk to Owedly</span></button>
     {open && <div className="assistant-backdrop" onMouseDown={() => !recording && setOpen(false)}><section className="assistant-panel" onMouseDown={(e) => e.stopPropagation()}>
-      <div className="assistant-head"><div><p className="eyebrow">Owedly AI</p><h2>What do you need done?</h2></div><button className="icon-button" onClick={() => !recording && setOpen(false)}>×</button></div>
+      <div className="assistant-head"><div><p className="eyebrow">Owedly Office</p><h2>What do you need done?</h2></div><button className="icon-button" onClick={() => !recording && setOpen(false)}>×</button></div>
       <button className={`record-button ${recording ? 'recording' : ''}`} onClick={toggleRecording} disabled={busy}><span className="record-orb">●</span>{recording ? 'Tap to stop' : busy ? 'Working…' : 'Tap and speak'}</button>
       <div className="assistant-divider"><span>or type it</span></div>
       <div className="command-box"><textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Create an invoice for Bob Smith…" /><button className="primary-button compact" onClick={submitText} disabled={busy || !text.trim()}>Send</button></div>
       {action && !result && <div className="action-preview"><span className="intent-pill">{friendlyIntent(action.intent)}</span><h3>{action.clarification_question || 'Ready to do this?'}</h3><p>{action.clarification_question ? 'Add the missing detail and send the command again.' : describe(action)}</p>{action.requires_confirmation && !action.clarification_question && <div className="preview-actions"><button className="secondary-button" onClick={reject}>Cancel</button><button className="primary-button" onClick={confirm} disabled={busy}>{busy ? 'Working…' : 'Confirm'}</button></div>}</div>}
       <ResultView result={result} />
       {error && <p className="form-message error-text">{error}</p>}
-      <div className="assistant-hints"><span>“Who hasn’t paid me?”</span><span>“Create a customer named Bob Smith.”</span><span>“Schedule Williams Tuesday at 10.”</span></div>
+      <div className="assistant-hints"><span>“Who hasn’t paid me?”</span><span>“Create a customer named Bob Smith.”</span><span>“Add $475 labor to Smith’s kitchen job as a change order.”</span></div>
     </section></div>}
   </>
 }
