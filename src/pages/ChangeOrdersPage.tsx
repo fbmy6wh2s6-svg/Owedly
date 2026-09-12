@@ -2,11 +2,14 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { canWrite, type CurrentBusiness } from '../lib/business'
 import { listJobs } from '../services/jobs'
 import { createChangeOrder, listChangeOrders, updateChangeOrderStatus } from '../services/changeOrders'
+import { createApprovalLink } from '../services/approvals'
+import ApprovalLinkDialog from '../components/ApprovalLinkDialog'
 
 type Customer = { id: string; first_name: string | null; last_name: string | null; company: string | null }
 type Job = { id: string; title: string; status: string; customer_id: string; customers: Customer[] | Customer | null }
 type ChangeOrder = { id: string; change_order_number: string | null; status: string; title: string; description: string | null; reason: string | null; schedule_impact_days: number; schedule_note: string | null; issue_date: string; subtotal: number; tax_amount: number; total: number; approved_at: string | null; customers: Customer[] | null; jobs: { id: string; title: string; status: string }[] | null }
 type Line = { description: string; quantity: string; unit_price: string; tax_rate: string }
+type ApprovalLinkState = { url: string; title: string; expiresAt: string }
 
 const blankLine = (): Line => ({ description: '', quantity: '1', unit_price: '', tax_rate: '0' })
 
@@ -23,6 +26,7 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
   const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [showForm, setShowForm] = useState(false)
+  const [approvalLink, setApprovalLink] = useState<ApprovalLinkState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [jobId, setJobId] = useState('')
@@ -84,12 +88,23 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
     await refresh()
   }
 
+  async function shareForApproval(order: ChangeOrder) {
+    setBusy(true); setError('')
+    try {
+      const link = await createApprovalLink(business.id, 'change_order', order.id)
+      setApprovalLink({ url: link.url, title: `${order.change_order_number || 'Change order'} approval link`, expiresAt: link.expires_at })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to create approval link')
+    } finally { setBusy(false) }
+  }
+
   return <div className="page-stack">
     <div className="page-heading split-heading">
       <div><p className="eyebrow">Change orders</p><h1>Capture scope changes before they become lost revenue.</h1></div>
       {canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New change order</button>}
     </div>
     <section className="change-order-intro"><strong>Accuracy first.</strong><span>Added work, price, tax and schedule impact stay separate until the customer approves the change.</span></section>
+    {error && !showForm && <p className="form-message error-text">{error}</p>}
     <section className="list-card">
       {changeOrders.length === 0 ? <div className="empty-state"><div className="empty-icon">CO</div><h2>No change orders yet</h2><p>When the scope changes, document the added work and cost here before doing it.</p></div> : changeOrders.map((order) => {
         const customer = order.customers?.[0]
@@ -97,7 +112,10 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
         return <article className="document-row change-order-row" key={order.id}>
           <div className="row-main"><strong>{order.change_order_number || 'Draft change order'} · {order.title}</strong><span>{customerName(customer)} · {job?.title || 'Job'}{order.schedule_impact_days ? ` · ${order.schedule_impact_days > 0 ? '+' : ''}${order.schedule_impact_days} day schedule impact` : ''}</span></div>
           <div className="invoice-money"><strong className="money">${Number(order.total).toFixed(2)}</strong><span>{order.status === 'approved' ? 'approved' : 'proposed change'}</span></div>
-          <select value={order.status} disabled={!canWrite(business.role)} onChange={(e) => changeStatus(order.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="approved">Approved</option><option value="declined">Declined</option><option value="void">Void</option></select>
+          <div className="document-actions">
+            <select value={order.status} disabled={!canWrite(business.role)} onChange={(e) => changeStatus(order.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="approved">Approved</option><option value="declined">Declined</option><option value="void">Void</option></select>
+            {canWrite(business.role) && order.status !== 'void' && <button className="secondary-button compact" disabled={busy} onClick={() => shareForApproval(order)}>Approval link</button>}
+          </div>
         </article>
       })}
     </section>
@@ -118,5 +136,6 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
         <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => { setShowForm(false); resetForm() }}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? 'Saving…' : 'Create change order'}</button></div>
       </form>
     </section></div>}
+    {approvalLink && <ApprovalLinkDialog url={approvalLink.url} title={approvalLink.title} expiresAt={approvalLink.expiresAt} onClose={() => setApprovalLink(null)} />}
   </div>
 }
