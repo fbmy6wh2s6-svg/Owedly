@@ -6,7 +6,8 @@ import CustomersPage from '../pages/CustomersPage'
 import JobsPage from '../pages/JobsPage'
 import EstimatesPage from '../pages/EstimatesPage'
 import InvoicesPage from '../pages/InvoicesPage'
-import PlaceholderPage from '../pages/PlaceholderPage'
+import SchedulePage from '../pages/SchedulePage'
+import PaymentsPage from '../pages/PaymentsPage'
 import VoiceAssistant from './VoiceAssistant'
 
 type View = 'dashboard' | 'customers' | 'jobs' | 'estimates' | 'invoices' | 'schedule' | 'payments'
@@ -31,8 +32,8 @@ export default function AppShell({ business }: { business: CurrentBusiness }) {
     if (view === 'jobs') return <JobsPage business={business} />
     if (view === 'estimates') return <EstimatesPage business={business} />
     if (view === 'invoices') return <InvoicesPage business={business} />
-    if (view === 'schedule') return <PlaceholderPage title="Schedule" description="See what’s next and keep work moving." />
-    return <PlaceholderPage title="Payments" description="Track what came in and what is still owed." />
+    if (view === 'schedule') return <SchedulePage business={business} />
+    return <PaymentsPage business={business} />
   }
 
   return (
