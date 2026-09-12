@@ -12,7 +12,7 @@ export interface JobInput {
 export async function listJobs(businessId: string) {
   const { data, error } = await supabase
     .from('jobs')
-    .select('id, title, description, status, scheduled_start, scheduled_end, customer_id, customers(first_name,last_name,company)')
+    .select('id, title, description, status, scheduled_start, scheduled_end, customer_id, customers(id,first_name,last_name,company)')
     .eq('business_id', businessId)
     .order('scheduled_start', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false })
