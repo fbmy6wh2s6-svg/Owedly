@@ -4,18 +4,20 @@ import { supabase } from '../lib/supabase'
 import DashboardPage from '../pages/DashboardPage'
 import CustomersPage from '../pages/CustomersPage'
 import JobsPage from '../pages/JobsPage'
+import ChangeOrdersPage from '../pages/ChangeOrdersPage'
 import EstimatesPage from '../pages/EstimatesPage'
 import InvoicesPage from '../pages/InvoicesPage'
 import SchedulePage from '../pages/SchedulePage'
 import PaymentsPage from '../pages/PaymentsPage'
 import VoiceAssistant from './VoiceAssistant'
 
-type View = 'dashboard' | 'customers' | 'jobs' | 'estimates' | 'invoices' | 'schedule' | 'payments'
+type View = 'dashboard' | 'customers' | 'jobs' | 'change_orders' | 'estimates' | 'invoices' | 'schedule' | 'payments'
 
 const nav: { id: View; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '⌂' },
   { id: 'customers', label: 'Customers', icon: 'C' },
   { id: 'jobs', label: 'Jobs', icon: 'J' },
+  { id: 'change_orders', label: 'Change Orders', icon: 'CO' },
   { id: 'estimates', label: 'Estimates', icon: 'E' },
   { id: 'invoices', label: 'Invoices', icon: 'I' },
   { id: 'schedule', label: 'Schedule', icon: 'S' },
@@ -23,7 +25,7 @@ const nav: { id: View; label: string; icon: string }[] = [
 ]
 
 const mobilePrimary: View[] = ['dashboard', 'customers', 'jobs', 'schedule']
-const mobileMore: View[] = ['estimates', 'invoices', 'payments']
+const mobileMore: View[] = ['change_orders', 'estimates', 'invoices', 'payments']
 
 export default function AppShell({ business }: { business: CurrentBusiness }) {
   const [view, setView] = useState<View>('dashboard')
@@ -39,6 +41,7 @@ export default function AppShell({ business }: { business: CurrentBusiness }) {
     if (view === 'dashboard') return <DashboardPage business={business} />
     if (view === 'customers') return <CustomersPage business={business} />
     if (view === 'jobs') return <JobsPage business={business} />
+    if (view === 'change_orders') return <ChangeOrdersPage business={business} />
     if (view === 'estimates') return <EstimatesPage business={business} />
     if (view === 'invoices') return <InvoicesPage business={business} />
     if (view === 'schedule') return <SchedulePage business={business} />
