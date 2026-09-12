@@ -3,6 +3,7 @@ import { canWrite, type CurrentBusiness } from '../lib/business'
 import { listJobs } from '../services/jobs'
 import { createChangeOrder, listChangeOrders, updateChangeOrderStatus } from '../services/changeOrders'
 import { createApprovalLink } from '../services/approvals'
+import { sendDocumentEmail } from '../services/communications'
 import ApprovalLinkDialog from '../components/ApprovalLinkDialog'
 
 type Customer = { id: string; first_name: string | null; last_name: string | null; company: string | null }
@@ -29,6 +30,7 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
   const [approvalLink, setApprovalLink] = useState<ApprovalLinkState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [jobId, setJobId] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -54,11 +56,11 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
   }, 0), [lines])
 
   function resetForm() {
-    setJobId(''); setTitle(''); setDescription(''); setReason(''); setScheduleImpactDays('0'); setScheduleNote(''); setLines([blankLine()]); setError('')
+    setJobId(''); setTitle(''); setDescription(''); setReason(''); setScheduleImpactDays('0'); setScheduleNote(''); setLines([blankLine()]); setError(''); setNotice('')
   }
 
   async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError('')
+    event.preventDefault(); setBusy(true); setError(''); setNotice('')
     try {
       const job = jobs.find((row) => row.id === jobId)
       if (!job) throw new Error('Choose a job')
@@ -84,17 +86,29 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
   }
 
   async function changeStatus(id: string, status: ChangeOrder['status']) {
+    setError(''); setNotice('')
     await updateChangeOrderStatus(id, status as 'draft' | 'sent' | 'approved' | 'declined' | 'void')
     await refresh()
   }
 
   async function shareForApproval(order: ChangeOrder) {
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setNotice('')
     try {
       const link = await createApprovalLink(business.id, 'change_order', order.id)
       setApprovalLink({ url: link.url, title: `${order.change_order_number || 'Change order'} approval link`, expiresAt: link.expires_at })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create approval link')
+    } finally { setBusy(false) }
+  }
+
+  async function emailForApproval(order: ChangeOrder) {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const sent = await sendDocumentEmail(business.id, 'change_order', order.id)
+      setNotice(`Change order sent to ${sent.recipient}.`)
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to email change order')
     } finally { setBusy(false) }
   }
 
@@ -104,17 +118,20 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
       {canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New change order</button>}
     </div>
     <section className="change-order-intro"><strong>Accuracy first.</strong><span>Added work, price, tax and schedule impact stay separate until the customer approves the change.</span></section>
+    {notice && <p className="form-message success-text">{notice}</p>}
     {error && !showForm && <p className="form-message error-text">{error}</p>}
     <section className="list-card">
       {changeOrders.length === 0 ? <div className="empty-state"><div className="empty-icon">CO</div><h2>No change orders yet</h2><p>When the scope changes, document the added work and cost here before doing it.</p></div> : changeOrders.map((order) => {
         const customer = order.customers?.[0]
         const job = order.jobs?.[0]
+        const terminal = ['approved', 'declined', 'void'].includes(order.status)
         return <article className="document-row change-order-row" key={order.id}>
           <div className="row-main"><strong>{order.change_order_number || 'Draft change order'} · {order.title}</strong><span>{customerName(customer)} · {job?.title || 'Job'}{order.schedule_impact_days ? ` · ${order.schedule_impact_days > 0 ? '+' : ''}${order.schedule_impact_days} day schedule impact` : ''}</span></div>
           <div className="invoice-money"><strong className="money">${Number(order.total).toFixed(2)}</strong><span>{order.status === 'approved' ? 'approved' : 'proposed change'}</span></div>
           <div className="document-actions">
-            <select value={order.status} disabled={!canWrite(business.role)} onChange={(e) => changeStatus(order.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="approved">Approved</option><option value="declined">Declined</option><option value="void">Void</option></select>
-            {canWrite(business.role) && order.status !== 'void' && <button className="secondary-button compact" disabled={busy} onClick={() => shareForApproval(order)}>Approval link</button>}
+            {terminal ? <span className={`status-chip ${order.status === 'approved' ? 'paid' : ''}`}>{order.status}</span> : <select value={order.status} disabled={!canWrite(business.role)} onChange={(e) => changeStatus(order.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="void">Void</option></select>}
+            {canWrite(business.role) && !['void','approved'].includes(order.status) && <button className="primary-button compact" disabled={busy} onClick={() => emailForApproval(order)}>Email customer</button>}
+            {canWrite(business.role) && !['void','approved'].includes(order.status) && <button className="secondary-button compact" disabled={busy} onClick={() => shareForApproval(order)}>Copy approval link</button>}
           </div>
         </article>
       })}
