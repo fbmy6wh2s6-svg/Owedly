@@ -1,0 +1,29 @@
+name: Offline UI Preview
+on:
+  push:
+    branches: [preview/iphone-screen-gallery-20260913]
+    paths:
+      - tools/build-ui-preview.mjs
+      - .github/workflows/ui-preview.yml
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run build
+      - run: node tools/build-ui-preview.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owedly-offline-ui-preview
+          path: preview-assets/
+          retention-days: 3
+          if-no-files-found: error
