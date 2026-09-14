@@ -25,7 +25,7 @@ jobs:
       - run: npm install
       - run: npm run build
       - name: Install isolated browser-test tooling
-        run: npm install --no-save @playwright/test@1.55.0
+        run: npm install --no-save @playwright/test@1.63.0
       - run: npx playwright install --with-deps chromium
       - name: Browser regression checks (mock services only)
         run: npx playwright test
@@ -33,9 +33,9 @@ jobs:
         with:
           deno-version: v2.x
       - name: Check invoice email backend
-        run: deno check supabase/functions/send-invoice-email/index.ts
+        run: deno check --node-modules-dir=auto supabase/functions/send-invoice-email/index.ts
       - name: Backend regression checks (mock services only)
-        run: deno test --allow-env supabase/functions/send-invoice-email/index_test.ts
+        run: deno test --node-modules-dir=auto --allow-env supabase/functions/send-invoice-email/index_test.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
