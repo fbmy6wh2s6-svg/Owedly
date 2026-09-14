@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: trial-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   trial-checks:
     runs-on: ubuntu-latest
@@ -30,6 +34,8 @@ jobs:
           deno-version: v2.x
       - name: Check invoice email backend
         run: deno check supabase/functions/send-invoice-email/index.ts
+      - name: Backend regression checks (mock services only)
+        run: deno test --allow-env supabase/functions/send-invoice-email/index_test.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
