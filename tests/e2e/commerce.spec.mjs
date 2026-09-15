@@ -52,7 +52,7 @@ async function nav(page,name,mobile=false){if(mobile&&name==='Settings & plan')a
 async function create(page,kind='invoice'){
  await page.getByRole('button',{name:`+ New ${kind}`}).click()
  const form=page.getByRole('dialog')
- await form.getByLabel('Customer',{exact:true}).selectOption(c)
+ await form.getByRole('combobox',{name:'Customer',exact:true}).selectOption(c)
  await form.getByLabel('Description 1',{exact:true}).fill('Repair <script>alert(1)</script>')
  await form.getByLabel('Unit price 1',{exact:true}).fill('100')
  await form.getByLabel('Tax percent 1',{exact:true}).fill('7')
