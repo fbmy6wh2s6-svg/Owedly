@@ -1,10 +1,11 @@
+import {normalizeRelations} from '../lib/relations'
 import { supabase } from '../lib/supabase'
 
 export async function getInvoiceDetail(businessId: string, invoiceId: string) {
   const [invoice, items, payments, messages] = await Promise.all([
     supabase
       .from('invoices')
-      .select('id,invoice_number,status,issue_date,due_date,subtotal,tax_amount,total,amount_paid,balance_due,notes,customer_message,sent_at,paid_at,customer_id,job_id,estimate_id,customers(id,first_name,last_name,company,email,phone)')
+      .select('id,invoice_number,status,issue_date,due_date,subtotal,tax_amount,total,amount_paid,balance_due,notes,customer_message,sent_at,paid_at,customer_id,job_id,estimate_id,customers:customers!invoices_customer_id_fkey(id,first_name,last_name,company,email,phone)')
       .eq('business_id', businessId)
       .eq('id', invoiceId)
       .single(),
@@ -29,13 +30,13 @@ export async function getInvoiceDetail(businessId: string, invoiceId: string) {
       .limit(50),
   ])
 
-  if (invoice.error) throw invoice.error
-  if (items.error) throw items.error
-  if (payments.error) throw payments.error
-  if (messages.error) throw messages.error
+  if (invoice.error) throw new Error(invoice.error.message)
+  if (items.error) throw new Error(items.error.message)
+  if (payments.error) throw new Error(payments.error.message)
+  if (messages.error) throw new Error(messages.error.message)
 
   return {
-    invoice: invoice.data,
+    invoice: normalizeRelations(invoice.data),
     items: items.data ?? [],
     payments: payments.data ?? [],
     messages: messages.data ?? [],
@@ -63,6 +64,6 @@ export async function createInvoiceReminder(
     .select('id,due_at,status,note')
     .single()
 
-  if (error) throw error
-  return data
+  if (error) throw new Error(error.message)
+  return normalizeRelations(data)
 }

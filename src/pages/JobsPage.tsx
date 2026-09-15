@@ -20,7 +20,7 @@ export default function JobsPage({ business }: { business: CurrentBusiness }) {
     setCustomers(customerRows as Customer[])
   }
 
-  useEffect(() => { refresh() }, [business.id])
+  useEffect(() => { refresh().catch(err=>setError(err instanceof Error?err.message:'Unable to load data. Please retry.')) }, [business.id])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -49,7 +49,7 @@ export default function JobsPage({ business }: { business: CurrentBusiness }) {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack">{error&&!showForm&&<p className="banner error-text" role="alert">{error}</p>}
       <div className="page-heading split-heading">
         <div><p className="eyebrow">Jobs</p><h1>Keep every job moving.</h1></div>
         {canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New job</button>}

@@ -19,7 +19,7 @@ export async function listCustomerProperties(businessId: string, customerId: str
     .eq('customer_id', customerId)
     .order('created_at', { ascending: true })
 
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return data
 }
 
@@ -43,6 +43,6 @@ export async function createProperty(businessId: string, input: PropertyInput) {
     .select()
     .single()
 
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return data
 }

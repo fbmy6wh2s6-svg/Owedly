@@ -10,17 +10,10 @@ export interface CustomerInput {
   notes?: string
 }
 
-export async function listCustomers(businessId: string) {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('*')
-    .eq('business_id', businessId)
-    .eq('archived', false)
-    .order('last_name', { ascending: true })
-    .order('first_name', { ascending: true })
-
-  if (error) throw error
-  return data
+export async function listCustomers(businessId:string){
+ const all:any[]=[]
+ for(let offset=0;;offset+=500){const {data,error}=await supabase.from('customers').select('*').eq('business_id',businessId).eq('archived',false).order('last_name').order('first_name').order('id').range(offset,offset+499);if(error)throw new Error(error.message);all.push(...data);if(data.length<500)break}
+ return all
 }
 
 export async function createCustomer(businessId: string, input: CustomerInput) {
@@ -28,6 +21,8 @@ export async function createCustomer(businessId: string, input: CustomerInput) {
     throw new Error('Enter a customer name or company')
   }
 
+  for(const [key,value] of Object.entries(input)){if(typeof value==='string'&&value.length>(key==='notes'?4000:200))throw new Error(`${key} is too long`)}
+  if(input.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email))throw new Error('Enter a valid email address')
   const payload = {
     business_id: businessId,
     first_name: input.first_name?.trim() || null,
@@ -40,7 +35,7 @@ export async function createCustomer(businessId: string, input: CustomerInput) {
   }
 
   const { data, error } = await supabase.from('customers').insert(payload).select().single()
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return data
 }
 
@@ -60,11 +55,11 @@ export async function updateCustomer(customerId: string, input: CustomerInput) {
     .select()
     .single()
 
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return data
 }
 
 export async function archiveCustomer(customerId: string) {
   const { error } = await supabase.from('customers').update({ archived: true }).eq('id', customerId)
-  if (error) throw error
+  if (error) throw new Error(error.message)
 }

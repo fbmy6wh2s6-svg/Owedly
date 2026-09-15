@@ -25,7 +25,7 @@ export default function CustomersPage({ business }: { business: CurrentBusiness 
     setCustomers((await listCustomers(business.id)) as Customer[])
   }
 
-  useEffect(() => { refresh() }, [business.id])
+  useEffect(() => { refresh().catch(err=>setError(err instanceof Error?err.message:'Unable to load data. Please retry.')) }, [business.id])
 
   const visible = useMemo(() => {
     const term = query.trim().toLowerCase()
@@ -56,7 +56,7 @@ export default function CustomersPage({ business }: { business: CurrentBusiness 
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack">{error&&!showForm&&<p className="banner error-text" role="alert">{error}</p>}
       <div className="page-heading split-heading">
         <div><p className="eyebrow">Customers</p><h1>Everyone you work for, in one place.</h1></div>
         {canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New customer</button>}
@@ -78,11 +78,11 @@ export default function CustomersPage({ business }: { business: CurrentBusiness 
       {showForm && <div className="modal-backdrop" onMouseDown={() => setShowForm(false)}><section className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head"><div><p className="eyebrow">New customer</p><h2>Add a customer</h2></div><button className="icon-button" onClick={() => setShowForm(false)}>×</button></div>
         <form onSubmit={submit} className="form-grid">
-          <label>First name<input value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} /></label>
-          <label>Last name<input value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} /></label>
-          <label className="full">Company<input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} /></label>
-          <label>Phone<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
-          <label>Email<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+          <label>First name<input maxLength={200} value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} /></label>
+          <label>Last name<input maxLength={200} value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} /></label>
+          <label className="full">Company<input maxLength={200} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} /></label>
+          <label>Phone<input maxLength={200} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
+          <label>Email<input type="email" maxLength={200} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
           {error && <p className="form-message error-text full">{error}</p>}
           <div className="modal-actions full"><button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? 'Saving…' : 'Save customer'}</button></div>
         </form>

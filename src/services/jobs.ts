@@ -1,3 +1,4 @@
+import {normalizeRelations} from '../lib/relations'
 import { supabase } from '../lib/supabase'
 
 export interface JobInput {
@@ -12,13 +13,13 @@ export interface JobInput {
 export async function listJobs(businessId: string) {
   const { data, error } = await supabase
     .from('jobs')
-    .select('id, title, description, status, scheduled_start, scheduled_end, customer_id, customers(id,first_name,last_name,company)')
+    .select('id, title, description, status, scheduled_start, scheduled_end, customer_id, customers:customers!jobs_customer_id_fkey(id,first_name,last_name,company)')
     .eq('business_id', businessId)
     .order('scheduled_start', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false })
 
-  if (error) throw error
-  return data
+  if (error) throw new Error(error.message)
+  return normalizeRelations(data)
 }
 
 export async function createJob(businessId: string, input: JobInput) {
@@ -39,7 +40,7 @@ export async function createJob(businessId: string, input: JobInput) {
     .select()
     .single()
 
-  if (error) throw error
+  if (error) throw new Error(error.message)
 
   if (input.scheduled_start) {
     const { error: appointmentError } = await supabase.from('appointments').insert({
@@ -65,7 +66,7 @@ export async function updateJobStatus(jobId: string, status: JobInput['status'])
   const payload: Record<string, unknown> = { status }
   if (status === 'completed') payload.completed_at = new Date().toISOString()
   const { error } = await supabase.from('jobs').update(payload).eq('id', jobId)
-  if (error) throw error
+  if (error) throw new Error(error.message)
 
   if (status === 'completed' || status === 'canceled') {
     const appointmentStatus = status === 'completed' ? 'completed' : 'canceled'
@@ -74,6 +75,6 @@ export async function updateJobStatus(jobId: string, status: JobInput['status'])
       .update({ status: appointmentStatus })
       .eq('job_id', jobId)
       .in('status', ['scheduled', 'confirmed', 'in_progress'])
-    if (appointmentError) throw appointmentError
+    if (appointmentError) throw new Error(appointmentError.message)
   }
 }

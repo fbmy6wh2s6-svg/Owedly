@@ -1,0 +1,9 @@
+import {useState,type FormEvent} from 'react'
+import {providerNames,type PaymentLink,type PaymentProvider,errorMessage} from '../lib/commerce'
+import {setInvoicePaymentOptions} from '../services/documents'
+export default function InvoicePaymentOptions({businessId,invoiceId,links,instructions,onSaved}:{businessId:string;invoiceId:string;links:PaymentLink[];instructions:string;onSaved:()=>Promise<void>}){
+ const [values,setValues]=useState(links),[text,setText]=useState(instructions),[busy,setBusy]=useState(false),[error,setError]=useState('')
+ function setLink(provider:PaymentProvider,url:string){setValues(old=>[...old.filter(l=>l.provider!==provider),...(url.trim()?[{provider,url}]:[])])}
+ async function save(e:FormEvent){e.preventDefault();setBusy(true);setError('');try{await setInvoicePaymentOptions(businessId,invoiceId,values,text);await onSaved()}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
+ return <form className="form-grid" onSubmit={save}>{(Object.keys(providerNames) as PaymentProvider[]).map(provider=><label className="full" key={provider}>{providerNames[provider]} link for this invoice<input type="url" value={values.find(v=>v.provider===provider)?.url||''} maxLength={1000} disabled={busy} onChange={e=>setLink(provider,e.target.value)}/></label>)}<label className="full">Invoice payment instructions<textarea value={text} maxLength={2000} disabled={busy} onChange={e=>setText(e.target.value)}/></label><p className="full quiet">A fixed-amount Stripe or other provider link must be created for this invoice’s amount in your own provider account. No automatic checkout is created. These settings lock when the invoice is issued.</p>{error&&<p className="full error-text" role="alert">{error}</p>}<button className="primary-button full" disabled={busy}>{busy?'Saving…':'Save invoice payment options'}</button></form>
+}

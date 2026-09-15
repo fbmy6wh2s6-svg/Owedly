@@ -11,7 +11,7 @@ export async function createApprovalLink(businessId: string, documentType: Appro
       expires_days: expiresDays,
     },
   })
-  if (error) throw error
+  if (error) throw new Error(error.message)
   const relative = String(data.relative_url ?? `/?approval=${encodeURIComponent(data.token)}`)
   return {
     ...data,
@@ -23,7 +23,7 @@ export async function getCustomerApproval(token: string) {
   const { data, error } = await supabase.functions.invoke('customer-approval', {
     body: { token, mode: 'view' },
   })
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return data
 }
 
@@ -31,6 +31,6 @@ export async function submitCustomerApproval(token: string, action: 'approved' |
   const { data, error } = await supabase.functions.invoke('customer-approval', {
     body: { token, mode: action, typed_name: typedName.trim() },
   })
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return data
 }

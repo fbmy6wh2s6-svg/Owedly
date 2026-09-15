@@ -34,7 +34,7 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
     setCustomers(customerRows as Customer[])
   }
 
-  useEffect(() => { refresh() }, [business.id])
+  useEffect(() => { refresh().catch(err=>setError(err instanceof Error?err.message:'Unable to load data. Please retry.')) }, [business.id])
 
   const previewTotal = useMemo(() => lines.reduce((sum, line) => {
     const quantity = Number(line.quantity || 0)
@@ -113,7 +113,7 @@ export default function EstimatesPage({ business }: { business: CurrentBusiness 
     } finally { setBusy(false) }
   }
 
-  return <div className="page-stack">
+  return <div className="page-stack">{error&&!showForm&&<p className="banner error-text" role="alert">{error}</p>}
     <div className="page-heading split-heading"><div><p className="eyebrow">Estimates</p><h1>Quote the work without the paperwork.</h1></div>{canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New estimate</button>}</div>
     {notice && <p className="form-message success-text">{notice}</p>}
     {error && !showForm && !convertTarget && <p className="form-message error-text">{error}</p>}
