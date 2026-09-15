@@ -26,6 +26,17 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Browser regression checks (mock services only)
         run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trial-check-results
+          path: test-results/
+          retention-days: 7
+  backend-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -33,9 +44,3 @@ jobs:
         run: deno check --node-modules-dir=auto supabase/functions/send-invoice-email/index.ts supabase/functions/send-document-email/index.ts supabase/functions/ai-command/index.ts supabase/functions/transcribe-voice/index.ts supabase/functions/execute-ai-action/index.ts
       - name: Backend regression checks (mock providers only)
         run: deno test --node-modules-dir=auto --allow-env supabase/functions/send-invoice-email/index_test.ts supabase/functions/ai-command/index_test.ts
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trial-check-results
-          path: test-results/
-          retention-days: 7
