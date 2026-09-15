@@ -1,4 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import {calculateLines} from '../lib/commerce'
+import {useWorkspace} from '../components/WorkspaceContext'
+import { FormEvent, useEffect, useMemo, useState, useRef } from 'react'
 import { canWrite, type CurrentBusiness } from '../lib/business'
 import { listJobs } from '../services/jobs'
 import { createChangeOrder, listChangeOrders, updateChangeOrderStatus } from '../services/changeOrders'
@@ -24,6 +26,9 @@ function jobCustomer(job: Job) {
 }
 
 export default function ChangeOrdersPage({ business }: { business: CurrentBusiness }) {
+  const {workspace}=useWorkspace()
+  const pro=workspace.plan.plan==='pro'
+  const requestId=useRef(crypto.randomUUID())
   const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [showForm, setShowForm] = useState(false)
@@ -45,17 +50,12 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
     setJobs((jobRows as unknown as Job[]).filter((job) => job.status !== 'canceled'))
   }
 
-  useEffect(() => { refresh() }, [business.id])
+  useEffect(() => { refresh().catch(err=>setError(err instanceof Error?err.message:'Unable to load data. Please retry.')) }, [business.id])
 
-  const preview = useMemo(() => lines.reduce((sum, line) => {
-    const quantity = Number(line.quantity || 0)
-    const price = Number(line.unit_price || 0)
-    const tax = Number(line.tax_rate || 0)
-    const base = Number.isFinite(quantity * price) ? quantity * price : 0
-    return sum + base + (base * tax / 100)
-  }, 0), [lines])
+  const preview=useMemo(()=>{try{return calculateLines(lines).total}catch{return 0}},[lines])
 
   function resetForm() {
+    requestId.current=crypto.randomUUID()
     setJobId(''); setTitle(''); setDescription(''); setReason(''); setScheduleImpactDays('0'); setScheduleNote(''); setLines([blankLine()]); setError(''); setNotice('')
   }
 
@@ -78,7 +78,7 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
           unit_price: Number(line.unit_price),
           tax_rate: Number(line.tax_rate || 0),
         })),
-      })
+      },requestId.current)
       resetForm(); setShowForm(false); await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create change order')
@@ -92,6 +92,7 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
   }
 
   async function shareForApproval(order: ChangeOrder) {
+    if(!pro){setError('Email sending and hosted approval links require Pro.');return}
     setBusy(true); setError(''); setNotice('')
     try {
       const link = await createApprovalLink(business.id, 'change_order', order.id)
@@ -102,6 +103,7 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
   }
 
   async function emailForApproval(order: ChangeOrder) {
+    if(!pro){setError('Email sending and hosted approval links require Pro.');return}
     setBusy(true); setError(''); setNotice('')
     try {
       const sent = await sendDocumentEmail(business.id, 'change_order', order.id)
@@ -112,7 +114,7 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
     } finally { setBusy(false) }
   }
 
-  return <div className="page-stack">
+  return <div className="page-stack">{error&&!showForm&&<p className="banner error-text" role="alert">{error}</p>}
     <div className="page-heading split-heading">
       <div><p className="eyebrow">Change orders</p><h1>Capture scope changes before they become lost revenue.</h1></div>
       {canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New change order</button>}
@@ -130,8 +132,8 @@ export default function ChangeOrdersPage({ business }: { business: CurrentBusine
           <div className="invoice-money"><strong className="money">${Number(order.total).toFixed(2)}</strong><span>{order.status === 'approved' ? 'approved' : 'proposed change'}</span></div>
           <div className="document-actions">
             {terminal ? <span className={`status-chip ${order.status === 'approved' ? 'paid' : ''}`}>{order.status}</span> : <select value={order.status} disabled={!canWrite(business.role)} onChange={(e) => changeStatus(order.id, e.target.value)}><option value="draft">Draft</option><option value="sent">Sent</option><option value="void">Void</option></select>}
-            {canWrite(business.role) && !['void','approved'].includes(order.status) && <button className="primary-button compact" disabled={busy} onClick={() => emailForApproval(order)}>Email customer</button>}
-            {canWrite(business.role) && !['void','approved'].includes(order.status) && <button className="secondary-button compact" disabled={busy} onClick={() => shareForApproval(order)}>Copy approval link</button>}
+            {pro && canWrite(business.role) && !['void','approved','declined'].includes(order.status) && <button className="primary-button compact" disabled={busy} onClick={() => emailForApproval(order)}>Email customer</button>}
+            {pro && canWrite(business.role) && !['void','approved','declined'].includes(order.status) && <button className="secondary-button compact" disabled={busy} onClick={() => shareForApproval(order)}>Copy approval link</button>}
           </div>
         </article>
       })}

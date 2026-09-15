@@ -7,7 +7,7 @@ export type SendDocumentEmailResult = {
   recipient: string
   approval_link_id: string
   expires_at: string
-  status: 'sent'
+  status: 'accepted'
 }
 
 export async function sendDocumentEmail(
@@ -20,9 +20,18 @@ export async function sendDocumentEmail(
       business_id: businessId,
       document_type: documentType,
       document_id: documentId,
+      request_id: pendingRequest(businessId,documentType,documentId),
     },
   })
 
-  if (error) throw error
+  if(error){let message=error.message;try{const body=await (error as any).context?.json();if(typeof body?.error==='string')message=body.error}catch{}throw new Error(message)}
+  sessionStorage.removeItem(`owedly-mail-${businessId}-${documentType}-${documentId}`)
   return data as SendDocumentEmailResult
+}
+
+function pendingRequest(businessId:string,type:string,id:string){
+ const key=`owedly-mail-${businessId}-${type}-${id}`
+ let value=sessionStorage.getItem(key)
+ if(!value){value=crypto.randomUUID();sessionStorage.setItem(key,value)}
+ return value
 }

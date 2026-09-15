@@ -4,3 +4,8 @@ dist
 .env.local
 .DS_Store
 *.log
+
+*.tsbuildinfo
+.test-build/
+test-results/
+playwright-report/

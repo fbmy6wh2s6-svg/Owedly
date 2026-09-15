@@ -1,95 +1,45 @@
-import { useEffect, useState } from 'react'
-import { canWrite, type CurrentBusiness } from '../lib/business'
-import { completeReminder, getDashboardSnapshot, type DashboardSnapshot } from '../services/dashboard'
-
-const empty: DashboardSnapshot = {
-  customers: 0,
-  openInvoices: 0,
-  outstandingBalance: 0,
-  jobsThisWeek: 0,
-  overdueInvoices: [],
-  dueReminders: [],
-  todayAppointments: [],
-  pendingApprovals: [],
-}
-
-function personName(customer?: { first_name: string | null; last_name: string | null; company: string | null }) {
-  if (!customer) return 'Customer'
-  return [customer.first_name, customer.last_name].filter(Boolean).join(' ') || customer.company || 'Customer'
-}
-
-export default function DashboardPage({ business }: { business: CurrentBusiness }) {
-  const [snapshot, setSnapshot] = useState(empty)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  async function refresh() {
-    setLoading(true)
-    setError('')
-    try {
-      setSnapshot(await getDashboardSnapshot(business.id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load dashboard')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { refresh() }, [business.id])
-
-  async function finishReminder(reminderId: string) {
-    try {
-      await completeReminder(reminderId)
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to complete reminder')
-    }
-  }
-
-  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-  const attentionCount = snapshot.overdueInvoices.length + snapshot.dueReminders.length + snapshot.pendingApprovals.length
-
-  return <div className="page-stack">
-    <div className="page-heading split-heading">
-      <div><p className="eyebrow">Owedly Office · Today</p><h1>{attentionCount ? `${attentionCount} item${attentionCount === 1 ? '' : 's'} need your attention.` : 'Your office is caught up.'}</h1></div>
-      <button className="secondary-button compact" onClick={refresh} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
-    </div>
-
-    <section className="metric-grid">
-      <article className="metric-card"><span>Outstanding</span><strong>{loading ? '—' : money.format(snapshot.outstandingBalance)}</strong><small>{snapshot.openInvoices} unpaid invoice{snapshot.openInvoices === 1 ? '' : 's'}</small></article>
-      <article className="metric-card"><span>Jobs next 7 days</span><strong>{loading ? '—' : snapshot.jobsThisWeek}</strong><small>{snapshot.todayAppointments.length} scheduled today</small></article>
-      <article className="metric-card"><span>Waiting on customers</span><strong>{loading ? '—' : snapshot.pendingApprovals.length}</strong><small>Sent estimates and change orders</small></article>
-    </section>
-
-    {error && <p className="form-message error-text">{error}</p>}
-
-    <section className="office-day-grid">
-      <article className="office-panel">
-        <div className="office-panel-head"><div><p className="eyebrow">Today’s work</p><h2>Schedule</h2></div><span className="count-badge">{snapshot.todayAppointments.length}</span></div>
-        {snapshot.todayAppointments.length === 0 ? <p className="quiet">Nothing is scheduled for today.</p> : <div className="office-list">{snapshot.todayAppointments.map((appointment) => <div className="office-list-row" key={appointment.id}><div className="time-box"><strong>{new Date(appointment.starts_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</strong>{appointment.ends_at && <span>{new Date(appointment.ends_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}</div><div className="row-main"><strong>{appointment.title}</strong><span>{personName(appointment.customers?.[0])} · {appointment.status.replaceAll('_', ' ')}</span></div></div>)}</div>}
-      </article>
-
-      <article className="office-panel overdue-panel">
-        <div className="office-panel-head"><div><p className="eyebrow">Get paid</p><h2>Overdue invoices</h2></div><span className="count-badge">{snapshot.overdueInvoices.length}</span></div>
-        {snapshot.overdueInvoices.length === 0 ? <p className="quiet">No overdue balances need attention.</p> : <div className="office-list">{snapshot.overdueInvoices.map((invoice) => <div className="office-list-row" key={invoice.id}><div className="row-main"><strong>{invoice.invoice_number || 'Invoice'} · {personName(invoice.customers?.[0])}</strong><span>{invoice.due_date ? `Due ${new Date(invoice.due_date + 'T00:00:00').toLocaleDateString()}` : 'Past due'}</span></div><strong className="overdue-money">${Number(invoice.balance_due).toFixed(2)}</strong></div>)}</div>}
-      </article>
-    </section>
-
-    <section className="office-day-grid">
-      <article className="office-panel">
-        <div className="office-panel-head"><div><p className="eyebrow">Waiting on customer</p><h2>Approvals</h2></div><span className="count-badge">{snapshot.pendingApprovals.length}</span></div>
-        {snapshot.pendingApprovals.length === 0 ? <p className="quiet">No sent estimates or change orders are waiting for a decision.</p> : <div className="office-list">{snapshot.pendingApprovals.map((item) => <div className="office-list-row" key={`${item.document_type}-${item.id}`}><div className="approval-type-mini">{item.document_type === 'estimate' ? 'E' : 'CO'}</div><div className="row-main"><strong>{item.number || item.title} · {personName(item.customers?.[0])}</strong><span>{item.document_type === 'estimate' ? 'Estimate' : item.title} · sent {new Date(item.issue_date + 'T00:00:00').toLocaleDateString()}</span></div><strong className="money">${Number(item.total).toFixed(2)}</strong></div>)}</div>}
-      </article>
-
-      <article className="office-panel">
-        <div className="office-panel-head"><div><p className="eyebrow">Follow-up</p><h2>Reminders due</h2></div><span className="count-badge">{snapshot.dueReminders.length}</span></div>
-        {snapshot.dueReminders.length === 0 ? <p className="quiet">You’re caught up on reminders.</p> : <div className="office-list">{snapshot.dueReminders.map((reminder) => <div className="office-list-row" key={reminder.id}><div className="reminder-check">!</div><div className="row-main"><strong>{reminder.note || reminder.kind.replaceAll('_', ' ')}</strong><span>Due {new Date(reminder.due_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span></div>{canWrite(business.role) && <button className="secondary-button small-button" onClick={() => finishReminder(reminder.id)}>Done</button>}</div>)}</div>}
-      </article>
-    </section>
-
-    <section className="attention-card">
-      <div><p className="eyebrow">AI-assisted office manager</p><h2>Tell Owedly what needs to get done.</h2><p>Create customers, jobs, estimates, change orders, invoices, payments and schedule changes by voice. Anything involving money, scope or schedule is shown for confirmation first.</p></div>
-      <div className="command-examples"><span>“Who hasn’t paid me?”</span><span>“Schedule Williams Tuesday at 10.”</span><span>“Add $475 labor to Smith’s kitchen job as a change order.”</span></div>
-    </section>
-  </div>
+import {useEffect,useState} from 'react'
+import type {CurrentBusiness} from '../lib/business'
+import {supabase} from '../lib/supabase'
+import {errorMessage,money,customerName,dateLabel} from '../lib/commerce'
+import {useWorkspace} from '../components/WorkspaceContext'
+export default function DashboardPage({business,onNavigate}:{business:CurrentBusiness;onNavigate?:(view:string,id?:string)=>void}){
+ const {workspace}=useWorkspace()
+ const [metrics,setMetrics]=useState<any>(null),[overdue,setOverdue]=useState<any[]>([]),[reminders,setReminders]=useState<any[]>([]),[appointments,setAppointments]=useState<any[]>([]),[activity,setActivity]=useState<any[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(true)
+ async function load(){setLoading(true);setError('');try{
+  const result=await supabase.rpc('get_dashboard_metrics',{target_business_id:business.id});if(result.error)throw result.error
+  const today=result.data.today
+  const [inv,rem,app,events]=await Promise.all([
+   supabase.from('invoices').select('id,invoice_number,due_date,balance_due,customers:customers!invoices_customer_id_fkey(first_name,last_name,company)').eq('business_id',business.id).not('status','in','(draft,void)').lt('due_date',today).gt('balance_due',0).order('due_date').limit(8),
+   supabase.from('reminders').select('id,note,due_at,invoice_id,estimate_id,job_id,status').eq('business_id',business.id).eq('status','pending').lte('due_at',new Date().toISOString()).order('due_at').limit(8),
+   supabase.from('appointments').select('id,title,starts_at,status').eq('business_id',business.id).gte('starts_at',new Date().toISOString()).not('status','in','(canceled,completed,no_show)').order('starts_at').limit(8),
+   supabase.from('payments').select('id,invoice_id,amount,method,status,paid_at').eq('business_id',business.id).order('paid_at',{ascending:false}).limit(8),
+  ])
+  for(const r of [inv,rem,app,events])if(r.error)throw r.error
+  setMetrics(result.data);setOverdue(inv.data||[]);setReminders(rem.data||[]);setAppointments(app.data||[]);setActivity(events.data||[])
+ }catch(e){setError(errorMessage(e))}finally{setLoading(false)}}
+ useEffect(()=>{load()},[business.id])
+ async function complete(id:string){try{const {error}=await supabase.from('reminders').update({status:'completed',completed_at:new Date().toISOString()}).eq('id',id).eq('business_id',business.id);if(error)throw error;await load()}catch(e){setError(errorMessage(e))}}
+ const cash=(v:number)=>money(v,workspace.profile.currency), pro=workspace.plan.plan==='pro'
+ return <div className="page-stack dashboard-upgraded"><div className="page-heading split-heading"><div><p className="eyebrow">{workspace.profile.name}</p><h1>Your business, at a glance.</h1><p className="quiet">See what needs attention, then get back to work.</p></div><button className="secondary-button" disabled={loading} onClick={load}>Refresh</button></div>
+ <div className="quick-actions"><button className="primary-button" onClick={()=>onNavigate?.('invoices')}>Create or manage invoices</button><button className="secondary-button" onClick={()=>onNavigate?.('estimates')}>Create or manage estimates</button><button className="secondary-button" onClick={()=>onNavigate?.('customers')}>Add a customer</button></div>
+ {error&&<p className="banner error-text" role="alert">Dashboard unavailable: {error}. No totals should be assumed from missing data.</p>}
+ {loading?<div className="detail-card" role="status">Refreshing your totals…</div>:metrics&&!error?<>
+ <section className="metric-grid">
+ <button className="metric-card" onClick={()=>onNavigate?.('invoices')}><span>Outstanding — issued invoices</span><strong>{cash(metrics.outstanding)}</strong><small>{metrics.open_count} open invoices · excludes drafts and voids</small></button>
+ <button className="metric-card" onClick={()=>onNavigate?.('invoices')}><span>Overdue</span><strong>{cash(metrics.overdue)}</strong><small>{metrics.overdue_count} unpaid invoices past their due date</small></button>
+ <button className="metric-card" onClick={()=>onNavigate?.('payments')}><span>Payments recorded this month</span><strong>{cash(metrics.collected_month)}</strong><small>Before processing fees · not verified bank deposits or profit</small></button>
+ <button className="metric-card" onClick={()=>onNavigate?.('estimates')}><span>Estimates ready to invoice</span><strong>{metrics.accepted_estimates}</strong><small>{metrics.awaiting_estimates} estimates awaiting a decision</small></button>
+ </section>
+ <div className="dashboard-columns"><section className="detail-card"><h2>Needs your attention</h2>
+ {metrics.draft_count>0&&<button className="attention-row" onClick={()=>onNavigate?.('invoices')}><span>Draft invoices not yet shared</span><strong>{metrics.draft_count} →</strong></button>}
+ {metrics.failed_emails>0&&<div className="banner warning">{metrics.failed_emails} email attempts failed this month. Review the affected documents before retrying.</div>}
+ {overdue.map(i=><button className="attention-row" key={i.id} onClick={()=>onNavigate?.('invoices',i.id)}><span><strong>{i.invoice_number}</strong><small>{customerName(i.customers)} · due {dateLabel(i.due_date)}</small></span><strong>{cash(i.balance_due)} →</strong></button>)}
+ {!overdue.length&&!metrics.draft_count&&!metrics.failed_emails&&<p className="quiet">No overdue invoices, unsent drafts, or failed emails in this view.</p>}
+ {metrics.overdue_count>overdue.length&&<button className="text-button" onClick={()=>onNavigate?.('invoices')}>View all {metrics.overdue_count} overdue invoices</button>}
+ </section><section className="detail-card"><h2>Follow-ups due</h2>{reminders.length?reminders.map(r=><div className="attention-row" key={r.id}><button className="text-button left" onClick={()=>onNavigate?.(r.invoice_id?'invoices':r.estimate_id?'estimates':'jobs',r.invoice_id||r.estimate_id||r.job_id)}>{r.note||'Follow up'}<small>{new Date(r.due_at).toLocaleString(undefined,{timeZone:metrics.timezone})}</small></button><button className="secondary-button compact" onClick={()=>complete(r.id)}>Done</button></div>):<p className="quiet">No pending follow-ups are due.</p>}<p className="quiet">These are in-app reminders, not automatic email or push notifications.</p></section></div>
+ <details className="detail-card" open><summary>Receivables aging</summary><div className="aging-grid">{Object.entries(metrics.aging).map(([key,value])=><div key={key}><span>{({current:'Current / no due date',days_1_30:'1–30 days late',days_31_60:'31–60 days late',days_61_90:'61–90 days late',days_90_plus:'Over 90 days late'} as Record<string,string>)[key]}</span><strong>{cash(Number(value))}</strong></div>)}</div><p className="quiet">Dates use your business timezone: {metrics.timezone}. Totals are calculated from all matching records, not only this page.</p></details>
+ <details className="detail-card"><summary>Upcoming schedule & recent payments</summary><div className="dashboard-columns"><div><h3>Next appointments</h3>{appointments.length?appointments.map(a=><div className="attention-row" key={a.id}><span>{a.title}<small>{new Date(a.starts_at).toLocaleString(undefined,{timeZone:metrics.timezone})}</small></span><span>{a.status}</span></div>):<p>No upcoming appointments.</p>}<button className="text-button" onClick={()=>onNavigate?.('schedule')}>Open schedule</button></div><div><h3>Recent recorded payments</h3>{activity.length?activity.map(p=><button className="attention-row" key={p.id} onClick={()=>onNavigate?.('invoices',p.invoice_id)}><span>{p.method||'Payment'} · {p.status}<small>{dateLabel(p.paid_at)}</small></span><strong>{cash(p.amount)}</strong></button>):<p>No recorded payments.</p>}</div></div></details>
+ <details className="detail-card"><summary>Your plan & storage</summary><div className="usage-grid"><div><strong>{pro?'Pro':'Free Basic'}</strong><span>{workspace.plan.documents_used}/{workspace.plan.documents_limit} new documents this month</span></div><div><strong>{workspace.plan.customers_used}/{workspace.plan.customers_limit}</strong><span>Stored customers</span></div><div><strong>{workspace.plan.stored_documents}/{workspace.plan.stored_limit}</strong><span>Stored documents</span></div></div><button className="text-button" onClick={()=>onNavigate?.('settings')}>View plan, payment settings, branding & data export</button></details>
+ </>:null}</div>
 }

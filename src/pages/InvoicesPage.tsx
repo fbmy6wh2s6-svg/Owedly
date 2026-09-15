@@ -28,7 +28,7 @@ export default function InvoicesPage({ business }: { business: CurrentBusiness }
     setCustomers(customerRows as Customer[])
   }
 
-  useEffect(() => { refresh() }, [business.id])
+  useEffect(() => { refresh().catch(err=>setError(err instanceof Error?err.message:'Unable to load data. Please retry.')) }, [business.id])
 
   const previewTotal = useMemo(() => lines.reduce((sum, line) => {
     const quantity = Number(line.quantity || 0)
@@ -74,7 +74,7 @@ export default function InvoicesPage({ business }: { business: CurrentBusiness }
 
   if (selectedInvoiceId) return <InvoiceDetail business={business} invoiceId={selectedInvoiceId} onBack={() => { setSelectedInvoiceId(null); refresh() }} />
 
-  return <div className="page-stack">
+  return <div className="page-stack">{error&&!showForm&&<p className="banner error-text" role="alert">{error}</p>}
     <div className="page-heading split-heading"><div><p className="eyebrow">Invoices</p><h1>Know what’s owed and get paid faster.</h1></div>{canWrite(business.role) && <button className="primary-button compact" onClick={() => setShowForm(true)}>+ New invoice</button>}</div>
     <section className="list-card">
       {invoices.length === 0 ? <div className="empty-state"><div className="empty-icon">I</div><h2>No invoices yet</h2><p>Create your first invoice here or tell Owedly what to bill.</p></div> : invoices.map((invoice) => {

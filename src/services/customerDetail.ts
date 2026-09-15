@@ -10,10 +10,10 @@ export async function getCustomerDetail(businessId: string, customerId: string) 
     supabase.from('invoices').select('id,invoice_number,status,total,amount_paid,balance_due,issue_date,due_date').eq('business_id', businessId).eq('customer_id', customerId).order('created_at', { ascending: false }).limit(20),
   ])
 
-  if (customer.error) throw customer.error
-  if (jobs.error) throw jobs.error
-  if (estimates.error) throw estimates.error
-  if (invoices.error) throw invoices.error
+  if (customer.error) throw new Error(customer.error.message)
+  if (jobs.error) throw new Error(jobs.error.message)
+  if (estimates.error) throw new Error(estimates.error.message)
+  if (invoices.error) throw new Error(invoices.error.message)
 
   return {
     customer: customer.data,

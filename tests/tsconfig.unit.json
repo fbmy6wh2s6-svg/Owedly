@@ -1,0 +1,1 @@
+{"compilerOptions":{"target":"ES2022","module":"ES2022","moduleResolution":"Bundler","outDir":"../.test-build","rootDir":"..","strict":true,"skipLibCheck":true,"types":[]},"include":["../src/lib/commerce.ts","../supabase/functions/_shared/wav.ts"]}

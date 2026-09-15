@@ -1,18 +1,14 @@
 name: Trial readiness checks
-
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
-
 permissions:
   contents: read
-
 concurrency:
   group: trial-checks-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   trial-checks:
     runs-on: ubuntu-latest
@@ -22,23 +18,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
+      - run: npm run test:unit
       - run: npm run build
       - name: Install isolated browser-test tooling
         run: npm install --no-save @playwright/test@1.63.0
       - run: npx playwright install --with-deps chromium
       - name: Browser regression checks (mock services only)
         run: npx playwright test
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - name: Check invoice email backend
-        run: deno check --node-modules-dir=auto supabase/functions/send-invoice-email/index.ts
-      - name: Backend regression checks (mock services only)
-        run: deno test --node-modules-dir=auto --allow-env supabase/functions/send-invoice-email/index_test.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: trial-check-results
           path: test-results/
           retention-days: 7
+  backend-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check all paid-service entrypoints
+        run: deno check --node-modules-dir=auto supabase/functions/send-invoice-email/index.ts supabase/functions/send-document-email/index.ts supabase/functions/ai-command/index.ts supabase/functions/transcribe-voice/index.ts supabase/functions/execute-ai-action/index.ts
+      - name: Backend regression checks (mock providers only)
+        run: deno test --node-modules-dir=auto --allow-env supabase/functions/send-invoice-email/index_test.ts supabase/functions/ai-command/index_test.ts

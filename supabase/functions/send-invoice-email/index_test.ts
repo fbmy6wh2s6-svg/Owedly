@@ -4,6 +4,7 @@ const originalServe = Deno.serve
 Deno.serve = ((handler: Handler) => { handle = handler; return {} }) as typeof Deno.serve
 Deno.env.set('SUPABASE_URL', 'https://example.supabase.co')
 Deno.env.set('SUPABASE_ANON_KEY', 'test-key')
+Deno.env.set('SUPABASE_SERVICE_ROLE_KEY', 'test-service-key')
 Deno.env.set('RESEND_API_KEY', 'test-resend-key')
 await import('./index.ts')
 Deno.serve = originalServe
@@ -18,7 +19,7 @@ function request(overrides: Record<string, unknown> = {}, auth = true, origin = 
   return new Request('https://example.supabase.co/functions/v1/send-invoice-email', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin, ...(auth ? { Authorization: 'Bearer test-session' } : {}) }, body: JSON.stringify({ business_id: businessId, invoice_id: invoiceId, request_id: requestId, ...overrides }) })
 }
 
-type Options = { role?: string; missingInvoice?: boolean; missingEmail?: boolean }
+type Options = { role?: string; missingInvoice?: boolean; missingEmail?: boolean; free?: boolean; quota?: boolean; logo?: boolean }
 async function withMock(options: Options, run: (state: { emails: Record<string, unknown>[]; requests: URL[] }) => Promise<void>) {
   const originalFetch = globalThis.fetch
   const emails: Record<string, unknown>[] = []
@@ -33,13 +34,16 @@ async function withMock(options: Options, run: (state: { emails: Record<string, 
     if (url.hostname !== 'example.supabase.co') throw new Error('Unexpected external network request')
     if (url.pathname === '/auth/v1/user') return json({ id: userId, email: 'owner@example.test', app_metadata: {}, user_metadata: {} })
     const table = url.pathname.split('/').pop()
+    if(table==='get_plan_usage')return json({plan:options.free?'free':'pro'})
+    if(table==='reserve_feature')return options.quota?json({code:'P0001',message:'Monthly email limit reached'},400):json(true)
+    if(table==='business_branding')return json(options.logo?{logo_data_url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='}:null)
     if (table === 'business_members') return json({ role: options.role || 'owner' })
     if (table === 'businesses') return json({ name: 'Trial Business', email: 'owner@example.test', phone: '', currency: 'USD' })
     if (table === 'customers') return json({ id: customerId, first_name: 'Trial', last_name: 'Customer', email: options.missingEmail ? null : 'customer@example.test' })
     if (table === 'invoice_items') return json([{ description: '<script>alert(1)</script>', quantity: 1, unit_price: 100, tax_rate: 0, line_total: 100 }])
     if (table === 'invoices') {
       if (req.method === 'PATCH') return new Response(null, { status: 204 })
-      return json(options.missingInvoice ? [] : { id: invoiceId, customer_id: customerId, invoice_number: 'INV-1001', status: 'draft', issue_date: '2026-09-14', due_date: '2026-10-01', subtotal: 100, tax_amount: 0, total: 100, amount_paid: 0, balance_due: 100, customer_message: 'Thank you', notes: 'CONFIDENTIAL_INTERNAL_NOTES' })
+      return json(options.missingInvoice ? [] : { id: invoiceId, customer_id: customerId, invoice_number: 'INV-1001', status: 'draft', issue_date: '2026-09-14', due_date: '2026-10-01', subtotal: 100, tax_amount: 0, total: 100, amount_paid: 0, balance_due: 100, payment_links:[{provider:'venmo',url:'https://venmo.com/TrialBusiness'}],payment_instructions:'Use the invoice number',customer_message: 'Thank you', notes: 'CONFIDENTIAL_INTERNAL_NOTES' })
     }
     if (table === 'messages') {
       if (req.method === 'HEAD') return new Response(null, { status: 200, headers: { 'Content-Range': '0-0/0' } })
@@ -90,3 +94,7 @@ Deno.test('retry of accepted request does not send a second email', async () => 
     assert(state.emails.length === 1, 'Provider is called only once')
   })
 })
+
+Deno.test('free accounts are blocked before email providers or quota reservations',async()=>{await withMock({free:true},async state=>{const r=await handle(request());assert(r.status===403,'Free denied');assert(!state.emails.length,'No emails');assert(!state.requests.some(u=>u.pathname.endsWith('/reserve_feature')),'No reservation needed')})})
+Deno.test('monthly email cap blocks provider spending',async()=>{await withMock({quota:true},async state=>{const r=await handle(request());assert(r.status===429,'Quota denied');assert(!state.emails.length,'No email provider call')})})
+Deno.test('paid invoice email includes merchant payment links and inline logo',async()=>{await withMock({logo:true},async state=>{const r=await handle(request());assert(r.status===200,await r.clone().text());const e=state.emails[0] as any;assert(e.text.includes('https://venmo.com/TrialBusiness'),'Payment link');assert(e.html.includes('cid:company-logo'),'Inline image referenced');assert(e.attachments[0].content_id==='company-logo','CID matches');assert(!e.text.includes('CONFIDENTIAL'),'No notes')})})

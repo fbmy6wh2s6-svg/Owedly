@@ -52,5 +52,5 @@ export async function createBusiness(name: string): Promise<CurrentBusiness> {
 }
 
 export function canWrite(role: BusinessRole) {
-  return role !== 'viewer'
+  return ['owner','admin','office','technician'].includes(role)
 }
